@@ -5,11 +5,15 @@ const {
     fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const express = require('express');
-const qrcode = require('qrcode-terminal');
+const cors = require('cors');
+const qrcodeTerminal = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 const pino = require('pino');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -17,9 +21,14 @@ const FASTAPI_WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:8000/wh
 
 let sock = null;
 let isConnected = false;
+let currentQrRaw = null;
+let currentQrDataUrl = null;
+let connectedUser = null;
+
+const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'auth_info_baileys'));
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -31,24 +40,47 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+            currentQrRaw = qr;
             console.log('\n--- SCAN THIS QR CODE TO CONNECT WHATSAPP ---');
-            qrcode.generate(qr, { small: true });
+            qrcodeTerminal.generate(qr, { small: true });
+            try {
+                currentQrDataUrl = await QRCode.toDataURL(qr);
+            } catch (err) {
+                console.error('Error generating QR Data URL:', err);
+            }
         }
 
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut);
-            console.log('Connection closed. Reconnecting:', shouldReconnect);
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = (statusCode !== DisconnectReason.loggedOut);
+            console.log(`Connection closed (status ${statusCode}). Reconnecting:`, shouldReconnect);
             isConnected = false;
+            connectedUser = null;
+
             if (shouldReconnect) {
+                connectToWhatsApp();
+            } else {
+                console.log('Logged out. Wiping session credentials...');
+                currentQrRaw = null;
+                currentQrDataUrl = null;
+                deleteAuthCredentials();
                 connectToWhatsApp();
             }
         } else if (connection === 'open') {
             console.log('✅ WhatsApp connected successfully!');
             isConnected = true;
+            currentQrRaw = null;
+            currentQrDataUrl = null;
+            if (sock?.user) {
+                connectedUser = {
+                    id: sock.user.id,
+                    name: sock.user.name || sock.user.notify
+                };
+            }
         }
     });
 
@@ -88,6 +120,17 @@ async function connectToWhatsApp() {
     });
 }
 
+function deleteAuthCredentials() {
+    try {
+        if (fs.existsSync(AUTH_DIR)) {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            console.log('Auth credentials directory deleted.');
+        }
+    } catch (err) {
+        console.error('Failed to delete auth folder:', err);
+    }
+}
+
 // OUTBOUND Message Endpoint
 app.post('/send', async (req, res) => {
     const { to, message } = req.body;
@@ -117,11 +160,45 @@ app.post('/send', async (req, res) => {
     }
 });
 
+// GET STATUS Endpoint
 app.get('/status', (req, res) => {
-    return res.json({ connected: isConnected });
+    return res.json({
+        connected: isConnected,
+        qr: currentQrDataUrl,
+        rawQr: currentQrRaw,
+        user: connectedUser
+    });
+});
+
+// GET QR Endpoint
+app.get('/qr', (req, res) => {
+    return res.json({
+        qr: currentQrDataUrl,
+        rawQr: currentQrRaw,
+        connected: isConnected
+    });
+});
+
+// DISCONNECT / LOGOUT Endpoint
+app.post('/disconnect', async (req, res) => {
+    try {
+        if (sock) {
+            await sock.logout().catch(() => {});
+        }
+        isConnected = false;
+        connectedUser = null;
+        currentQrRaw = null;
+        currentQrDataUrl = null;
+        deleteAuthCredentials();
+        setTimeout(() => connectToWhatsApp(), 1000);
+        return res.json({ status: 'disconnected', message: 'WhatsApp session ended. Generating new QR...' });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
 });
 
 app.listen(PORT, () => {
     console.log(`🚀 Baileys WhatsApp Microservice running on http://localhost:${PORT}`);
     connectToWhatsApp();
 });
+

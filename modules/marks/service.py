@@ -17,24 +17,79 @@ def format_marks_message(changes: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def aggregate_course_marks(items: list[dict]) -> dict:
+    mid_obtained, mid_max = 0.0, 0.0
+    qa_obtained, qa_max = 0.0, 0.0
+    lab_obtained, lab_max = 0.0, 0.0
+
+    for item in items:
+        a_type = (item.get('assessment_type') or '').lower()
+        a_name = (item.get('assessment_name') or '').lower()
+        title = f"{a_type} {a_name}"
+
+        try:
+            obt = float(item.get('obtained_marks') or 0)
+            tot = float(item.get('total_marks') or 0)
+        except (ValueError, TypeError):
+            continue
+
+        if tot == 0 and ('clo' in title or 'outcome' in title):
+            continue
+
+        if 'mid' in title:
+            mid_obtained += obt
+            mid_max += tot
+        elif 'lab' in title or 'practical' in title or 'viva' in title or 'journal' in title:
+            lab_obtained += obt
+            lab_max += tot
+        else:
+            qa_obtained += obt
+            qa_max += tot
+
+    mid_scaled = round((mid_obtained / mid_max) * 30, 1) if mid_max > 0 else None
+    qa_scaled = round((qa_obtained / qa_max) * 20, 1) if qa_max > 0 else None
+    lab_scaled = round((lab_obtained / lab_max) * 50, 1) if lab_max > 0 else None
+
+    total_scaled = 0.0
+    has_val = False
+    if mid_scaled is not None:
+        total_scaled += mid_scaled
+        has_val = True
+    if qa_scaled is not None:
+        total_scaled += qa_scaled
+        has_val = True
+    if lab_scaled is not None:
+        total_scaled += lab_scaled
+        has_val = True
+
+    return {
+        'midterm': f"{mid_scaled} / 30" if mid_scaled is not None else "N/A / 30",
+        'quizzes_assignments': f"{qa_scaled} / 20" if qa_scaled is not None else "N/A / 20",
+        'lab': f"{lab_scaled} / 50" if lab_scaled is not None else "N/A / 50",
+        'total': f"{round(total_scaled, 1)} / 100" if has_val else "N/A / 100"
+    }
+
+
 def format_all_stored_marks(marks: list[dict]) -> str:
-    """Formats all stored marks for a student into a clean summary."""
+    """Formats all stored marks into a clean course summary (Midterm/30, Quizzes+Assign/20, Lab/50)."""
     if not marks:
         return "ℹ️ No marks records found in the database yet."
 
-    # Group by course
     courses = {}
     for m in marks:
-        c_name = m.get('course', 'Other')
+        c_name = m.get('course', 'Other Subject')
         if c_name not in courses:
             courses[c_name] = []
         courses[c_name].append(m)
 
-    lines = ["📊 *SSUET Stored Marks Summary*", ""]
+    lines = ["📊 *SSUET Academic Marks Summary*", ""]
     for c_name, items in courses.items():
+        summary = aggregate_course_marks(items)
         lines.append(f"📚 *{c_name}*")
-        for item in items:
-            lines.append(f"  • {item.get('assessment_type')} - {item.get('assessment_name')}: *{item.get('obtained_marks')}* / {item.get('total_marks')}")
+        lines.append(f"  • Midterm: *{summary['midterm']}*")
+        lines.append(f"  • Quizzes & Assignments: *{summary['quizzes_assignments']}*")
+        lines.append(f"  • Lab / Practical: *{summary['lab']}*")
+        lines.append(f"  🏆 Total: *{summary['total']}*")
         lines.append("")
 
     return "\n".join(lines)

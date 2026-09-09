@@ -1,10 +1,16 @@
-from passlib.context import CryptContext
+import bcrypt
 
-hash_method=CryptContext(schemes=['bcrypt'],deprecated='auto')
+def password_hash(password: str) -> str:
+    pwd_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8')
 
-def password_hash(password:str) -> str:
-    hashed=hash_method.hash(password)
-    return hashed
-
-def password_verification(password:str,stored_hash:str) -> bool:
-    return hash_method.verify(password,stored_hash)
+def password_verification(password: str, stored_hash: str) -> bool:
+    try:
+        pwd_bytes = password.encode('utf-8')[:72]
+        hash_bytes = stored_hash.encode('utf-8')
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
+    except Exception as e:
+        print(f"Password verification failed: {e}")
+        return False

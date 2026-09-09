@@ -1,5 +1,6 @@
 # Environment variables — contains Supabase keys, JWT secret, etc.
 .env
+frontend/.env
  
 # Python
 __pycache__/
@@ -9,6 +10,8 @@ ssuet/
  
 # Node.js
 whatsapp_service/node_modules/
+frontend/node_modules/
+frontend/dist/
  
 # Baileys WhatsApp session — contains your linked device credentials
 whatsapp_service/auth_info_baileys/
