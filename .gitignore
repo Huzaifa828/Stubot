@@ -1,4 +1,28 @@
-
+# Environment variables — contains Supabase keys, JWT secret, etc.
 .env
-
+ 
+# Python
+__pycache__/
+*.pyc
 ssuet/
+*.egg-info/
+ 
+# Node.js
+whatsapp_service/node_modules/
+ 
+# Baileys WhatsApp session — contains your linked device credentials
+whatsapp_service/auth_info_baileys/
+ 
+# Scraped downloads
+downloads/
+scraper/vouchers/
+scraper/admit_cards/
+ 
+# Local test artifacts
+Dashboard.html
+*.log
+ 
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/

@@ -1,0 +1,6 @@
+{
+  "lastChangelogVersion": "0.85.1",
+  "theme": "dark",
+  "defaultProvider": "groq",
+  "defaultModel": "openai/gpt-oss-120b"
+}
