@@ -1,6 +1,12 @@
+import sys
 import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from playwright.async_api import async_playwright
+...
 from modules.students.repo import get_all_students
 from modules.marks.service import run_marks_check_for_student
 
@@ -50,7 +56,7 @@ def start_scheduler():
     scheduler.add_job(
         scheduled_marks_check_job,
         trigger='interval',
-        minutes=30,
+        minutes=1,
         id='scheduled_marks_check',
         replace_existing=True
     )
